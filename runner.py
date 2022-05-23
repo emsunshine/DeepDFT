@@ -63,7 +63,7 @@ def get_arguments(arg_list=None):
     parser.add_argument(
         "--device",
         type=str,
-        default="cuda",
+        default="cpu",
         help="Set which device to use for training e.g. 'cuda' or 'cpu'",
     )
 
@@ -226,6 +226,10 @@ def main():
     device = torch.device(args.device)
     net = densitymodel.DensityModel(args.num_interactions, args.node_size, args.cutoff,)
     net = net.to(device)
+
+    if device == 'cpu':
+        torch.set_num_threads(4)
+        torch.set_num_interop_threads(4)
 
     # Setup optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)

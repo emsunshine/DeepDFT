@@ -19,8 +19,10 @@ def get_arguments(arg_list=None):
     )
     parser.add_argument("model_dir", type=str, help='Directory of pretrained model')
     parser.add_argument("atoms_file", type=str, help='ASE compatible atoms xyz-file')
-    parser.add_argument("--grid_step", type=float, default=0.05, help="Step size in Ångstrøm")
-    parser.add_argument("--vacuum", type=float, default=1.0, help="Pad simulation box with vacuum")
+    parser.add_argument("--nx", type=float, default=100, help="Number of grid steps in x direction")
+    parser.add_argument("--ny", type=float, default=100, help="Number of grid steps in y direction")
+    parser.add_argument("--nz", type=float, default=100, help="Number of grid steps in z direction")
+    parser.add_argument("--vacuum", type=float, default=0, help="Pad simulation box with vacuum")
     parser.add_argument("--output_dir", type=str, default="model_prediction", help="Output directory")
     parser.add_argument(
         "--device",
@@ -47,9 +49,9 @@ def load_model(model_dir, device):
     return model, runner_args.cutoff
 
 class LazyMeshGrid():
-    def __init__(self, cell, grid_step, origin=None):
+    def __init__(self, cell, nx, ny, nz, origin=None):
         self.cell = cell
-        self.scaled_grid_vectors = [np.arange(0, l, grid_step)/l for l in self.cell.lengths()]
+        self.scaled_grid_vectors = [np.linspace(0, 1, int(n)) for n in [nx, ny, nz]]
         self.shape = np.array([len(g) for g in self.scaled_grid_vectors] + [3])
         if origin is None:
             self.origin = np.zeros(3)
@@ -80,18 +82,18 @@ def ceil_float(x, step_size):
     eps = 2*np.finfo(float).eps * x
     return x - eps
 
-def load_molecule(atomspath, vacuum, grid_step):
+def load_molecule(atomspath, vacuum, nx, ny, nz):
     atoms = ase.io.read(atomspath)
-    atoms.center(vacuum=vacuum) # This will create a cell around the atoms
+    # atoms.center(vacuum=vacuum) # This will create a cell around the atoms
 
     # Readjust cell lengths to be a multiple of grid_step
-    a, b, c, ang_bc, ang_ac, ang_ab = atoms.get_cell_lengths_and_angles()
-    a, b, c = ceil_float(a, grid_step), ceil_float(b, grid_step), ceil_float(c, grid_step)
-    atoms.set_cell([a, b, c, ang_bc, ang_ac, ang_ab])
+    # a, b, c, ang_bc, ang_ac, ang_ab = atoms.get_cell_lengths_and_angles()
+    # a, b, c = ceil_float(a, grid_step), ceil_float(b, grid_step), ceil_float(c, grid_step)
+    # atoms.set_cell([a, b, c, ang_bc, ang_ac, ang_ab])
 
     origin = np.zeros(3)
 
-    grid_pos = LazyMeshGrid(atoms.get_cell(), grid_step)
+    grid_pos = LazyMeshGrid(atoms.get_cell(), nx, ny, nz)
 
     metadata = {"filename": atomspath}
     return {
@@ -102,9 +104,7 @@ def load_molecule(atomspath, vacuum, grid_step):
         "metadata": metadata, # Meta information
     }
 
-def main():
-    args = get_arguments()
-
+def main(args):
     # Setup logging
     os.makedirs(args.output_dir, exist_ok=True)
     logging.basicConfig(
@@ -120,7 +120,7 @@ def main():
 
     model, cutoff = load_model(args.model_dir, args.device)
 
-    density_dict = load_molecule(args.atoms_file, args.vacuum, args.grid_step)
+    density_dict = load_molecule(args.atoms_file, args.vacuum, args.nx, args.ny, args.nz)
 
     device = torch.device(args.device)
 
@@ -165,4 +165,9 @@ def main():
             logging.debug("Written %d/%d", cubewriter.numbers_written, np.prod(density_dict["grid_position"].shape[0:3]))
 
 if __name__ == "__main__":
-    main()
+    args = get_arguments()
+    main(args)
+
+
+
+
